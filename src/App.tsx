@@ -30,12 +30,14 @@ import {
   CheckCircle,
   PieChart as PieChartIcon,
   Shield,
-  UserPlus
+  UserPlus,
+  Info
 } from 'lucide-react';
+import Augmented4Logo from './assets/Augmented4_Logo_High_Res.png';
 
 interface PieChartProps {
-  cx: number | string;
-  cy: number | string;
+  cx: number;
+  cy: number;
   midAngle: number;
   innerRadius: number;
   outerRadius: number;
@@ -50,6 +52,11 @@ interface PieChartProps {
   value: number;
 }
 
+interface PieSectorDataItem {
+  name: string;
+  value: number;
+}
+
 interface ChartEvent {
   name: string;
   value: number;
@@ -59,45 +66,60 @@ interface ChartEvent {
   };
 }
 
+interface Timeline {
+  month: number;
+  newCustomers: number;
+  customers: number;
+  revenue: number;
+  operatingCosts: number;
+  profitBeforeSalaries: number;
+  salaryAffordable: boolean;
+  salaryAmount: number;
+  profitAfterSalaries: number;
+  cumulativeProfit: number;
+}
+
+interface TimelineItem {
+  stage: string;
+  customers: number;
+}
+
 const App = () => {
   const [activeTab, setActiveTab] = useState('gameMode');
   const [animateCustomers, setAnimateCustomers] = useState(false);
-  const [customerCount, setCustomerCount] = useState(0);
+  const [currentCustomers, setCurrentCustomers] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
-  const [investmentAmount, setInvestmentAmount] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [investmentAmount, setInvestmentAmount] = useState(1000000);
   const [equityPercentage, setEquityPercentage] = useState(10);
   const [agentsPerCustomer, setAgentsPerCustomer] = useState(1.8);
-  const [activeIndex, setActiveIndex] = useState(0);
   const [selectedPlan, setSelectedPlan] = useState('premium');
   const [extraMinutesPerAgent, setExtraMinutesPerAgent] = useState(300);
   const [subscriptionMix, setSubscriptionMix] = useState({
-    base: 30,      // 30% of customers on Base plan
-    premium: 60,   // 60% of customers on Premium plan  
-    corporate: 10  // 10% of customers on Corporate plan
+    base: 5,
+    premium: 10,
+    corporate: 85
   });
   const [monthlyCustomerTargets, setMonthlyCustomerTargets] = useState([
-    4, 8, 12, 18, 25, 35, 45, 60, 75, 95, 120, 150  // Customers acquired each month
+    8, 10, 16, 18, 22, 16, 20, 12, 21, 17, 22, 35
   ]);
-  const [monthlyOperatingCosts, setMonthlyOperatingCosts] = useState(5000); // Monthly costs excluding salaries
+  const [operatingCostPct, setOperatingCostPct] = useState(20);
   
   // Pricing plans
   const pricingPlans = {
     base: {
       name: 'Base',
       price: 114, // AUD per month per agent
-      includedMinutes: 180,
       description: 'For Individual. Perfect for getting started.'
     },
     premium: {
       name: 'Premium',
       price: 163, // AUD per month per agent
-      includedMinutes: 180,
       description: 'For Startups. Most popular for growing teams.'
     },
     corporate: {
       name: 'Corporate',
       price: 327, // AUD per month per agent
-      includedMinutes: 300,
       description: 'For enterprises and large teams.'
     }
   };
@@ -170,8 +192,8 @@ const App = () => {
   }, [pricingPlans, extraMinuteRate]);
 
   // Calculate 12-month cashflow timeline using monthly customer targets
-  const calculateCashflowTimeline = useCallback((monthlyTargets: number[], agentsPerCust: number, extraMins: number, mix: any, costs: number) => {
-    const timeline = [];
+  const calculateCashflowTimeline = useCallback((monthlyTargets: number[], agentsPerCust: number, extraMins: number, mix: any, costs: number): Timeline[] => {
+    const timeline: Timeline[] = [];
     const founderSalaryMonthly = (70000 / 12); // $5,833 per founder per month
     const totalSalaryMonthly = founderSalaryMonthly * 2; // Both founders
     
@@ -236,38 +258,47 @@ const App = () => {
   }, [agentsPerCustomer, selectedPlan, extraMinutesPerAgent, calculateSophisticatedRevenue]);
 
   // Current valuation based on investment terms and customer growth
-  const currentValuation = calculateCompanyValuation(investmentAmount, equityPercentage, customerCount);
+  const currentValuation = calculateCompanyValuation(investmentAmount, equityPercentage, currentCustomers);
 
   // Get current sophisticated revenue metrics with subscription mix
-  const revenueMetrics = calculateSophisticatedRevenue(customerCount, agentsPerCustomer, selectedPlan, extraMinutesPerAgent, subscriptionMix);
+  const revenueMetrics = calculateSophisticatedRevenue(currentCustomers, agentsPerCustomer, selectedPlan, extraMinutesPerAgent, subscriptionMix);
   const revenueMultiple = currentValuation / (revenueMetrics.annual || 1);
 
   // Get 12-month cashflow timeline
-  const cashflowTimeline = calculateCashflowTimeline(monthlyCustomerTargets, agentsPerCustomer, extraMinutesPerAgent, subscriptionMix, monthlyOperatingCosts);
+  const cashflowTimeline = calculateCashflowTimeline(monthlyCustomerTargets, agentsPerCustomer, extraMinutesPerAgent, subscriptionMix, Math.round((operatingCostPct / 100) * revenueMetrics.totalMonthly));
   
   // Find when salaries become affordable
   const salaryAffordableMonth = cashflowTimeline.find(month => month.salaryAffordable)?.month || null;
 
-  // Calculate equity distributions - EXACT 42/42/10/6 STRUCTURE
-  const calculateEquityDistribution = useCallback((step: number, investorPct: number) => {
-    // EXACT STRUCTURE: 42% Domenico, 42% Michael, 10% Investors, 6% Employees
-    let domenico = 42;
-    let michael = 42;
-    let investors = 10; // Reserved preference shares
-    let employees = 6;  // Reserved employee shares
+  // Calculate equity distributions based on customer count
+  const calculateEquityDistribution = useCallback((customers: number) => {
+    const totalShares = 11904762; // Total authorized shares
+    const domenicoShares = 5000000;
+    const michaelShares = 5000000;
+    const employeeShares = 714286; // 6% reserved
     
-    // Show current vs potential structure
-    if (investorPct > 0) {
-      // When investors come in, they get their 10% allocation
+    if (customers === 1000) {
+      // Series B: Additional 10% dilution
+      const seriesBShares = Math.floor(totalShares * 0.1); // 10% additional dilution
+      const newTotal = totalShares + seriesBShares;
+      return [
+        { name: 'Domenico', value: Math.round((domenicoShares / newTotal) * 100) },
+        { name: 'Michael', value: Math.round((michaelShares / newTotal) * 100) },
+        { name: 'Series A', value: 10 }, // Original 10%
+        { name: 'Series B', value: 10 }, // New 10%
+        { name: 'Employees', value: Math.round((employeeShares / newTotal) * 100) }
+      ];
+    } else if (customers >= 50) {
+      // Series A: Initial 10% investment
       return [
         { name: 'Domenico', value: 42 },
         { name: 'Michael', value: 42 },
-        { name: 'Investors', value: 10 },
+        { name: 'Series A', value: 10 },
         { name: 'Employees', value: 6 }
       ];
     }
     
-    // Current structure (only founders have issued shares)
+    // Initial structure
     return [
       { name: 'Domenico', value: 42 },
       { name: 'Michael', value: 42 },
@@ -281,11 +312,9 @@ const App = () => {
     setAnimateCustomers(true);
     const timer = setTimeout(() => {
       const interval = setInterval(() => {
-        setCustomerCount(prev => {
-          const target = currentStep === 0 ? 0 : 
-                        currentStep === 1 ? 150 : 
-                        currentStep === 2 ? 400 : 
-                        currentStep === 3 ? 700 : 1000;
+        setCurrentCustomers(prev => {
+                    const target = currentStep === 0 ? 0 : 
+                          currentStep === 1 ? 50 : 1000;
           
           if (prev >= target) {
             clearInterval(interval);
@@ -302,17 +331,26 @@ const App = () => {
   }, [currentStep]);
 
   // Customer data for different stages - NEW EQUAL PARTNERSHIP
-  const customerStages = [
+  const timeline: TimelineItem[] = [
     { stage: 'Foundation', customers: 0 },
-    { stage: 'Growth', customers: 150 },
-    { stage: 'Expansion', customers: 400 },
-    { stage: 'Scale', customers: 700 },
-    { stage: 'Investment', customers: 1000 }
+    { stage: 'Series A', customers: 50 },
+    { stage: 'Series B', customers: 1000 }
   ];
   
-  // Current equity distribution based on step and investor percentage
-  const currentEquityDistribution = calculateEquityDistribution(currentStep, 
-    currentStep === 4 ? equityPercentage : 0);
+  // Current equity distribution based on customer count
+  const currentEquityDistribution = calculateEquityDistribution(currentCustomers);
+  
+  // Calculate total shares based on customer count
+  const getTotalShares = (customers: number) => {
+    const baseShares = 11904762;
+    if (customers === 1000) {
+      return baseShares + Math.floor(baseShares * 0.1); // Add 10% for Series B
+    }
+    return baseShares;
+  };
+  
+  const totalShares = getTotalShares(currentCustomers);
+  const issuedShares = currentCustomers >= 50 ? 10000000 : 0; // Initial shares issued to founders
   
   // Protection Balance Data
   const protectionData = [
@@ -332,7 +370,7 @@ const App = () => {
   ];
   
   // Custom PieChart active sector animation
-  const renderActiveShape = (props: PieChartProps) => {
+  const renderActiveShape = useCallback((props: any) => {
     const {
       cx,
       cy,
@@ -401,7 +439,7 @@ const App = () => {
         </text>
       </g>
     );
-  };
+  }, []);
 
   const onPieEnter = useCallback((event: ChartEvent, index: number) => {
     setActiveIndex(index);
@@ -425,7 +463,7 @@ const App = () => {
       description: "Domenico (5M shares) and Michael (5M shares) equal partnership. 1.19M preference shares reserved for investors, 714K for employees. Total authorized: 11,904,762 shares."
     },
     {
-      title: "KPI Target: 50 Customers in 2 Months",
+      title: "Series A: 50 Customers",
       customers: 50,
       shares: {
         domenico: 5000000,
@@ -435,46 +473,21 @@ const App = () => {
         totalAuthorized: 11904762,
         totalIssued: 10000000
       },
-      description: "Critical KPI: Michael must acquire 50 enterprise customers (min $4K ARR each) by July 31, 2025. Success unlocks $70K annual salary for both founders. Target: $200K total ARR."
+      description: "Series A milestone: $1M investment for 10% equity at 50 customers. Both founders maintain equal 42% shares. Target: ARR > AUD 200,000"
     },
     {
-      title: "Salary Unlocked: Growth Phase",
-      customers: 150,
-      shares: {
-        domenico: 5000000,
-        michael: 5000000,
-        investors: 1190476,
-        employees: 714286,
-        totalAuthorized: 11904762,
-        totalIssued: 10000000
-      },
-      description: "KPI achieved! Both founders now earning $70K annually ($5,833/month each). Continued growth beyond initial 50 customer target. Strong foundation for scaling."
-    },
-    {
-      title: "Scale Phase: Investment Ready",
-      customers: 400,
-      shares: {
-        domenico: 5000000,
-        michael: 5000000,
-        investors: 1190476,
-        employees: 714286,
-        totalAuthorized: 11904762,
-        totalIssued: 10000000
-      },
-      description: "Significant customer growth demonstrates product-market fit. 42/42/10/6 structure attractive to investors. Reserved preference shares ready for strategic investors."
-    },
-    {
-      title: "Investment Round: Full Structure",
+      title: "Series B: 1000 Customers",
       customers: 1000,
       shares: {
         domenico: 5000000,
         michael: 5000000,
-        investors: 1190476,
+        seriesA: 1190476,
+        seriesB: 1309524,
         employees: 714286,
-        totalAuthorized: 11904762,
-        totalIssued: 11904762
+        totalAuthorized: 13095238,
+        totalIssued: 13095238
       },
-      description: "Investment-ready with 1000+ customers. All 11.9M authorized shares issued: 10M voting (founders), 1.19M preference (investors), 714K employee shares. Full structure activated."
+      description: "Series B milestone: $10M investment at 1000 customers. Post-dilution: Domenico 38%, Michael 38%, Series A 9%, Series B 10%, Employees 5%. Total authorized: 13,095,238 shares."
     }
   ];
   
@@ -485,24 +498,71 @@ const App = () => {
     { event: 'Intermediate', shareRetention: 60, compensation: 'Fair Value' }
   ];
   
+  // Calculate investment amount based on customer count
+  const calculateInvestmentAmount = useCallback((customers: number) => {
+    if (customers === 1000) return 10000000; // $10M at exactly 1000 customers
+    if (customers >= 50 && customers < 1000) return 1000000; // $1M at 50-999 customers
+    return 0; // $0 for less than 50 customers
+  }, []);
+
+  // Effect to update investment amount based on customer count
+  useEffect(() => {
+    const newInvestmentAmount = calculateInvestmentAmount(currentCustomers);
+    setInvestmentAmount(newInvestmentAmount);
+  }, [currentCustomers, calculateInvestmentAmount]);
+
+  // Add state for tooltip
+  const [showValuationTooltip, setShowValuationTooltip] = useState(false);
+  // Add state for revenue multiple tooltip
+  const [showRevenueMultipleTooltip, setShowRevenueMultipleTooltip] = useState(false);
+  // Add state for per customer value tooltip
+  const [showPerCustomerTooltip, setShowPerCustomerTooltip] = useState(false);
+  // Add state for landing page valuation tooltip
+  const [showLandingValuationTooltip, setShowLandingValuationTooltip] = useState(false);
+
+  // Calculate value per share
+  const valuePerShare = totalShares > 0 ? currentValuation / totalShares : 0;
+
+  // Calculate monthly operating costs as a percentage of revenue
+  const monthlyOperatingCosts = Math.round((operatingCostPct / 100) * revenueMetrics.totalMonthly);
+
+  // Prepare data for the chart: cumulative customers per month
+  const cumulativeCustomersData = monthlyCustomerTargets.reduce<{ month: number; customers: number }[]>((acc, val, idx) => {
+    const prev = acc.length > 0 ? acc[acc.length - 1].customers : 0;
+    acc.push({ month: idx + 1, customers: prev + val });
+    return acc;
+  }, []);
+
+  // Add state for scenario toggle
+  const [investorScenario, setInvestorScenario] = useState<'seriesA' | 'seriesB'>('seriesA');
+
+  // Pie chart data for each scenario
+  const investorPieData = investorScenario === 'seriesA'
+    ? [
+        { name: 'Domenico', value: 42, color: '#FF9800' },
+        { name: 'Michael', value: 42, color: '#2196F3' },
+        { name: 'Investors', value: 10, color: '#4CAF50' },
+        { name: 'Employees', value: 6, color: '#9C27B0' }
+      ]
+    : [
+        { name: 'Domenico', value: 38, color: '#FF9800' },
+        { name: 'Michael', value: 38, color: '#2196F3' },
+        { name: 'Series A', value: 9, color: '#4CAF50' },
+        { name: 'Series B', value: 10, color: '#00BCD4' },
+        { name: 'Employees', value: 5, color: '#9C27B0' }
+      ];
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Glowing hero section */}
-      <div className="relative overflow-hidden py-10 px-4 sm:px-6 lg:px-8">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-900 to-purple-900 opacity-70"></div>
-        <div className="absolute -top-24 -left-24 w-96 h-96 bg-purple-500 rounded-full filter blur-3xl opacity-20 animate-blob"></div>
-        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-blue-500 rounded-full filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-        
-        <div className="relative max-w-7xl mx-auto">
-          <div className="text-center">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-              The Augmented 4 Pty Ltd
-            </h1>
-            <p className="mt-3 max-w-md mx-auto text-lg text-gray-300 sm:text-xl md:mt-5 md:max-w-3xl">
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Top Black Header with Logo */}
+      <header className="w-full bg-black py-6 px-6 flex items-center shadow-lg z-50 relative overflow-hidden">
+        {/* Gradient effect on right side */}
+        <div className="absolute right-0 top-0 h-full w-1/2 bg-gradient-to-l from-purple-600 via-blue-500 to-transparent opacity-60 pointer-events-none" />
+        <img src={Augmented4Logo} alt="Augmented4 Logo" className="h-20 w-auto relative z-10" />
+        <h1 className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-3xl font-bold text-white drop-shadow-[0_0_10px_white] z-10 whitespace-nowrap">
+          Corporate Governance Dashboard
+        </h1>
+      </header>
       
       {/* Main content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -527,21 +587,12 @@ const App = () => {
             </div>
           </button>
           <button 
-            onClick={() => setActiveTab('protection')}
-            className={`px-4 py-2 font-medium rounded-t-lg mr-2 ${activeTab === 'protection' ? 'bg-blue-900 bg-opacity-50 text-blue-300' : 'text-gray-400 hover:text-gray-200'}`}
-          >
-            <div className="flex items-center">
-              <Lock className="h-4 w-4 mr-2" />
-              <span>Protection Balance</span>
-            </div>
-          </button>
-          <button 
             onClick={() => setActiveTab('investor')}
             className={`px-4 py-2 font-medium rounded-t-lg ${activeTab === 'investor' ? 'bg-blue-900 bg-opacity-50 text-blue-300' : 'text-gray-400 hover:text-gray-200'}`}
           >
             <div className="flex items-center">
               <PieChartIcon className="h-4 w-4 mr-2" />
-              <span>Investor Pool Analysis</span>
+              <span>Investor Exit Scenarios</span>
             </div>
           </button>
           <button 
@@ -582,14 +633,14 @@ const App = () => {
                     <div className="text-2xl font-bold flex items-center mb-2">
                       <Users className="h-6 w-6 mr-2 text-blue-400" />
                       <span className={`${animateCustomers ? 'text-green-400' : 'text-white'}`}>
-                        {customerCount.toLocaleString()}
+                        {currentCustomers.toLocaleString()}
                       </span>
                       <span className="text-gray-400 ml-2">/ 1,000 Customers</span>
                     </div>
                     <div className="bg-gray-700 h-2 rounded-full w-full max-w-md">
                       <div
                         className="bg-gradient-to-r from-blue-500 to-green-400 h-2 rounded-full transition-all duration-500 ease-out"
-                        style={{ width: `${(customerCount / 1000) * 100}%` }}
+                        style={{ width: `${(currentCustomers / 1000) * 100}%` }}
                       ></div>
                     </div>
                   </div>
@@ -598,14 +649,16 @@ const App = () => {
                     <div className="text-2xl font-bold flex items-center mb-2">
                       <Award className="h-6 w-6 mr-2 text-yellow-400" />
                       <span className="text-white">
-                        {(currentStep === 0 ? 0 : 500000 * currentStep).toLocaleString()}
+                        {currentCustomers >= 50 ? '10,000,000' : '0'}
                       </span>
-                      <span className="text-gray-400 ml-2">/ 2,000,000 Shares</span>
+                      <span className="text-gray-400 ml-2">
+                        / {currentCustomers === 1000 ? '13,095,238' : '11,904,762'} Shares
+                      </span>
                     </div>
                     <div className="bg-gray-700 h-2 rounded-full w-full max-w-md">
                       <div
                         className="bg-gradient-to-r from-yellow-500 to-yellow-300 h-2 rounded-full transition-all duration-500 ease-out"
-                        style={{ width: `${(currentStep * 25)}%` }}
+                        style={{ width: `${currentCustomers >= 1000 ? 100 : currentCustomers >= 50 ? 84 : 0}%` }}
                       ></div>
                     </div>
                   </div>
@@ -616,7 +669,7 @@ const App = () => {
               <div className="mb-8 bg-gray-900 p-4 rounded-lg border border-gray-700">
                 <h3 className="text-xl font-semibold mb-4 text-blue-300">Business Growth Journey</h3>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  {customerStages.map((stage, index) => (
+                  {timeline.map((stage, index) => (
                     <button
                       key={index}
                       onClick={() => setCurrentStep(index)}
@@ -641,8 +694,9 @@ const App = () => {
                   
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
+                      <PieChart key={currentStep}>
                         <Pie
+                          key={currentStep}
                           activeIndex={activeIndex}
                           activeShape={renderActiveShape}
                           data={currentEquityDistribution}
@@ -652,6 +706,9 @@ const App = () => {
                           outerRadius={90}
                           dataKey="value"
                           onMouseEnter={onPieEnter}
+                          isAnimationActive={true}
+                          animationDuration={800}
+                          animationEasing="ease-in-out"
                         >
                           {currentEquityDistribution.map((entry, index) => (
                             <Cell 
@@ -717,11 +774,33 @@ const App = () => {
                     </div>
                     
                     <div className="bg-gray-800 rounded-lg p-4">
-                      <h4 className="text-md font-medium text-gray-300 mb-2">Valuation Impact</h4>
+                      <h4 className="text-md font-medium text-gray-300 mb-2 flex items-center">
+                        Valuation Impact
+                        <span
+                          className="ml-1 relative cursor-pointer"
+                          onMouseEnter={() => setShowLandingValuationTooltip(true)}
+                          onMouseLeave={() => setShowLandingValuationTooltip(false)}
+                          onClick={() => setShowLandingValuationTooltip((v) => !v)}
+                        >
+                          <Info className="h-4 w-4 text-green-400" />
+                          {showLandingValuationTooltip && (
+                            <div className="absolute left-1/2 top-[120%] z-10 max-w-xs p-4 bg-gray-900 border border-green-400 rounded-lg shadow-xl text-xs text-gray-200" style={{ transform: 'translateX(-50%)' }}>
+                              <div className="font-bold mb-1">Valuation Formula</div>
+                              <div className="mb-1">Company Value = Investment-based Value + Growth Premium</div>
+                              <div className="mb-1">= ({investmentAmount > 0 && equityPercentage > 0 ? `$${investmentAmount.toLocaleString()} / ${equityPercentage}%` : '$0'}) + (Annual Revenue × Multiple)</div>
+                              <div className="mb-1">= ({investmentAmount > 0 && equityPercentage > 0 ? `$${(investmentAmount / (equityPercentage / 100)).toLocaleString()}` : '$0'}) + (${revenueMetrics.annual.toLocaleString()} × {((currentCustomers / 100) * 0.5 + 5).toFixed(2)})</div>
+                              <div className="mt-2">Current Value: <span className="font-bold text-green-400">${currentValuation.toLocaleString()}</span></div>
+                            </div>
+                          )}
+                        </span>
+                      </h4>
                       <p className="text-sm text-gray-400">Company Value</p>
                       <p className="text-lg font-bold text-green-400">
                         ${(currentValuation).toLocaleString()}
                       </p>
+                      <div className="mt-2 text-sm text-amber-400 font-semibold">
+                        Value per Share: {valuePerShare > 0 ? `$${valuePerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00'}
+                      </div>
                     </div>
                   </div>
                   
@@ -732,25 +811,42 @@ const App = () => {
                       <div className="flex justify-between">
                         <span className="text-gray-300">Domenico:</span>
                         <span className="text-orange-400 font-medium">
-                          {kpiMilestones[currentStep].shares.domenico.toLocaleString()} shares
+                          {kpiMilestones[currentStep].shares?.domenico?.toLocaleString()} shares
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-300">Michael:</span>
                         <span className="text-blue-400 font-medium">
-                          {kpiMilestones[currentStep].shares.michael.toLocaleString()} shares
+                          {kpiMilestones[currentStep].shares?.michael?.toLocaleString()} shares
                         </span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-300">Investors (Reserved):</span>
-                        <span className="text-green-400 font-medium">
-                          {kpiMilestones[currentStep].shares.investors.toLocaleString()} shares
-                        </span>
-                      </div>
+                      {currentStep === 2 ? (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-300">Series A:</span>
+                            <span className="text-green-400 font-medium">
+                              {kpiMilestones[2].shares?.seriesA?.toLocaleString()} shares
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-300">Series B:</span>
+                            <span className="text-cyan-400 font-medium">
+                              {kpiMilestones[2].shares?.seriesB?.toLocaleString()} shares
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex justify-between">
+                          <span className="text-gray-300">Investors (Reserved):</span>
+                          <span className="text-green-400 font-medium">
+                            {kpiMilestones[currentStep].shares?.investors?.toLocaleString()} shares
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-gray-300">Employees (Reserved):</span>
                         <span className="text-purple-400 font-medium">
-                          {kpiMilestones[currentStep].shares.employees.toLocaleString()} shares
+                          {kpiMilestones[currentStep].shares?.employees?.toLocaleString()} shares
                         </span>
                       </div>
                     </div>
@@ -768,7 +864,7 @@ const App = () => {
                             <CheckCircle className="h-3 w-3 text-white" />
                           ) : <span className="text-xs text-white">1</span>}
                         </div>
-                        <span>KPI Target: 50 Customers (2 months)</span>
+                        <span>Series A: 50 Customers ($1M for 10%)</span>
                       </li>
                       <li className="flex items-start">
                         <div className={`h-5 w-5 rounded-full mr-2 flex-shrink-0 flex items-center justify-center ${
@@ -778,27 +874,7 @@ const App = () => {
                             <CheckCircle className="h-3 w-3 text-white" />
                           ) : <span className="text-xs text-white">2</span>}
                         </div>
-                        <span>Salary Unlocked: $70K each annually</span>
-                      </li>
-                      <li className="flex items-start">
-                        <div className={`h-5 w-5 rounded-full mr-2 flex-shrink-0 flex items-center justify-center ${
-                          currentStep >= 3 ? 'bg-green-500' : 'bg-gray-600'
-                        }`}>
-                          {currentStep >= 3 ? (
-                            <CheckCircle className="h-3 w-3 text-white" />
-                          ) : <span className="text-xs text-white">3</span>}
-                        </div>
-                        <span>Scale Phase: 400+ Customers</span>
-                      </li>
-                      <li className="flex items-start">
-                        <div className={`h-5 w-5 rounded-full mr-2 flex-shrink-0 flex items-center justify-center ${
-                          currentStep >= 4 ? 'bg-green-500' : 'bg-gray-600'
-                        }`}>
-                          {currentStep >= 4 ? (
-                            <CheckCircle className="h-3 w-3 text-white" />
-                          ) : <span className="text-xs text-white">4</span>}
-                        </div>
-                        <span>Investment Ready: 1,000+ Customers</span>
+                        <span>Series B: 1,000 Customers ($10M investment)</span>
                       </li>
                     </ul>
                   </div>
@@ -813,11 +889,9 @@ const App = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
                       data={[
-                        { stage: 'Foundation', Domenico: 42, Michael: 42, Investors: 10, Employees: 6 },
-                        { stage: '50 Customers', Domenico: 42, Michael: 42, Investors: 10, Employees: 6 },
-                        { stage: 'Salary Unlocked', Domenico: 42, Michael: 42, Investors: 10, Employees: 6 },
-                        { stage: 'Scale Phase', Domenico: 42, Michael: 42, Investors: 10, Employees: 6 },
-                        { stage: 'Investment', Domenico: 42, Michael: 42, Investors: 10, Employees: 6 }
+                        { stage: 'Foundation', Domenico: 42, Michael: 42, "Investors (Reserved)": 10, "Employees (Reserved)": 6 },
+                        { stage: 'Series A (50)', Domenico: 42, Michael: 42, "Series A": 10, Employees: 6 },
+                        { stage: 'Series B (1000)', Domenico: 38, Michael: 38, "Series A": 9, "Series B": 10, Employees: 5 }
                       ]}
                       margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                     >
@@ -845,7 +919,7 @@ const App = () => {
                       />
                       <Area
                         type="monotone"
-                        dataKey="Investors"
+                        dataKey="Investors (Reserved)"
                         stackId="1"
                         stroke="#4CAF50"
                         fill="#4CAF50"
@@ -853,7 +927,31 @@ const App = () => {
                       />
                       <Area
                         type="monotone"
+                        dataKey="Series A"
+                        stackId="1"
+                        stroke="#4CAF50"
+                        fill="#4CAF50"
+                        fillOpacity={0.3}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="Series B"
+                        stackId="1"
+                        stroke="#00BCD4"
+                        fill="#00BCD4"
+                        fillOpacity={0.3}
+                      />
+                      <Area
+                        type="monotone"
                         dataKey="Employees"
+                        stackId="1"
+                        stroke="#9C27B0"
+                        fill="#9C27B0"
+                        fillOpacity={0.3}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="Employees (Reserved)"
                         stackId="1"
                         stroke="#9C27B0"
                         fill="#9C27B0"
@@ -889,9 +987,6 @@ const App = () => {
                           AUD ${plan.price}
                         </div>
                         <div className="text-sm text-gray-400 mb-2">per month/agent</div>
-                        <div className="text-xs text-gray-500 mb-2">
-                          {plan.includedMinutes} minutes included
-                        </div>
                         <div className="text-xs text-gray-400">{plan.description}</div>
                       </div>
                     </div>
@@ -937,7 +1032,7 @@ const App = () => {
                     />
                     <div className="mt-2 text-center">
                       <div className="text-lg font-bold text-orange-400">
-                        {Math.round((customerCount * subscriptionMix.base) / 100)} customers
+                        {Math.round((currentCustomers * subscriptionMix.base) / 100)} customers
                       </div>
                       <div className="text-xs text-gray-500">@ $114/agent/month</div>
                     </div>
@@ -977,7 +1072,7 @@ const App = () => {
                     />
                     <div className="mt-2 text-center">
                       <div className="text-lg font-bold text-blue-400">
-                        {Math.round((customerCount * subscriptionMix.premium) / 100)} customers
+                        {Math.round((currentCustomers * subscriptionMix.premium) / 100)} customers
                       </div>
                       <div className="text-xs text-gray-500">@ $163/agent/month</div>
                     </div>
@@ -1017,7 +1112,7 @@ const App = () => {
                     />
                     <div className="mt-2 text-center">
                       <div className="text-lg font-bold text-green-400">
-                        {Math.round((customerCount * subscriptionMix.corporate) / 100)} customers
+                        {Math.round((currentCustomers * subscriptionMix.corporate) / 100)} customers
                       </div>
                       <div className="text-xs text-gray-500">@ $327/agent/month</div>
                     </div>
@@ -1048,11 +1143,17 @@ const App = () => {
                     max="10000000"
                     step="100000"
                     value={investmentAmount}
-                    onChange={(e) => setInvestmentAmount(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                    disabled
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-not-allowed accent-green-500 opacity-50"
                   />
                   <div className="mt-2 text-xl font-bold text-green-400 transition-all duration-500">
                     ${investmentAmount.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {currentCustomers < 50 ? "Series A ($1M) available at 50 customers" :
+                     currentCustomers < 1000 ? "Series A: $1M investment active" :
+                     currentCustomers === 1000 ? "Series B: $10M investment achieved" :
+                     "Series B requires exactly 1000 customers"}
                   </div>
                 </div>
 
@@ -1064,15 +1165,15 @@ const App = () => {
                     min="0"
                     max="1000"
                     step="10"
-                    value={customerCount}
+                    value={currentCustomers}
                     onChange={(e) => {
-                      setCustomerCount(Number(e.target.value));
+                      setCurrentCustomers(Number(e.target.value));
                       setAnimateCustomers(true);
                     }}
                     className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                   />
                   <div className="mt-2 text-xl font-bold text-purple-400 transition-all duration-500">
-                    {customerCount.toLocaleString()}
+                    {currentCustomers.toLocaleString()}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
                     Steps: 0, 50, 100, 150... to 1000
@@ -1155,7 +1256,7 @@ const App = () => {
                             ${revenueMetrics.baseMonthly.toLocaleString()}/month
                           </div>
                           <div className="text-xs text-gray-500">
-                            Blended across {customerCount} customers
+                            Blended across {currentCustomers} customers
                           </div>
                         </div>
                       </>
@@ -1169,7 +1270,7 @@ const App = () => {
                           ${revenueMetrics.baseMonthly.toLocaleString()}/month
                         </div>
                         <div className="text-xs text-gray-500">
-                          {(customerCount * agentsPerCustomer).toFixed(0)} agents × ${pricingPlans[selectedPlan as keyof typeof pricingPlans].price}
+                          {(currentCustomers * agentsPerCustomer).toFixed(0)} agents × ${pricingPlans[selectedPlan as keyof typeof pricingPlans].price}
                         </div>
                       </div>
                     )}
@@ -1196,28 +1297,98 @@ const App = () => {
 
                 {/* Company Valuation */}
                 <div className="bg-gray-900 p-6 rounded-lg border border-gray-700">
-                  <h4 className="text-lg font-medium text-blue-300 mb-4">Company Valuation</h4>
+                  <div className="text-lg font-medium text-blue-300 mb-4 flex items-center">
+                    Company Valuation
+                    <span
+                      className="ml-2 relative cursor-pointer"
+                      onMouseEnter={() => setShowValuationTooltip(true)}
+                      onMouseLeave={() => setShowValuationTooltip(false)}
+                      onClick={() => setShowValuationTooltip((v) => !v)}
+                    >
+                      <Info className="h-5 w-5 text-blue-400" />
+                      {showValuationTooltip && (
+                        <div className="absolute left-1/2 top-[120%] z-10 max-w-xs p-4 bg-gray-900 border border-blue-400 rounded-lg shadow-xl text-xs text-gray-200" style={{ transform: 'translateX(-50%)' }}>
+                          <div className="font-bold mb-1">Valuation Formula</div>
+                          <div className="mb-1">Company Value = Investment-based Value + Growth Premium</div>
+                          <div className="mb-1">= ({investmentAmount > 0 && equityPercentage > 0 ? `$${investmentAmount.toLocaleString()} / ${equityPercentage}%` : '$0'}) + (Annual Revenue × Multiple)</div>
+                          <div className="mb-1">= ({investmentAmount > 0 && equityPercentage > 0 ? `$${(investmentAmount / (equityPercentage / 100)).toLocaleString()}` : '$0'}) + (${revenueMetrics.annual.toLocaleString()} × {((currentCustomers / 100) * 0.5 + 5).toFixed(2)})</div>
+                          <div className="mt-2">Current Value: <span className="font-bold text-green-400">${currentValuation.toLocaleString()}</span></div>
+                        </div>
+                      )}
+                    </span>
+                  </div>
                   <div className="text-3xl font-bold text-green-400 mb-4 transition-all duration-500">
-                    ${currentValuation.toLocaleString()}
+                    ${(currentValuation).toLocaleString()}
+                  </div>
+                  <div className="text-md text-amber-400 font-semibold mt-2">
+                    Value per Share: {valuePerShare > 0 ? `$${valuePerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00'}
                   </div>
                   
                   <div className="space-y-3">
                     <div className="p-3 bg-gray-800 rounded-lg">
                       <div className="text-sm text-gray-400">Investment Value</div>
-                      <div className="text-lg font-bold text-blue-400">
-                        ${investmentAmount > 0 && equityPercentage > 0 ? ((investmentAmount / (equityPercentage / 100))).toLocaleString() : '0'}
-                      </div>
+                      {currentCustomers >= 50 && (
+                        <div className="text-lg font-bold text-blue-400">
+                          Series A: $1,000,000
+                        </div>
+                      )}
+                      {currentCustomers === 1000 && (
+                        <div className="text-lg font-bold text-blue-400 mt-1">
+                          Series B: $10,000,000
+                        </div>
+                      )}
+                      {currentCustomers < 50 && (
+                        <div className="text-lg font-bold text-blue-400">
+                          $0
+                        </div>
+                      )}
                     </div>
                     <div className="p-3 bg-gray-800 rounded-lg">
-                      <div className="text-sm text-gray-400">Revenue Multiple</div>
+                      <div className="text-sm text-gray-400 flex items-center">
+                        Revenue Multiple
+                        <span
+                          className="ml-1 relative cursor-pointer"
+                          onMouseEnter={() => setShowRevenueMultipleTooltip(true)}
+                          onMouseLeave={() => setShowRevenueMultipleTooltip(false)}
+                          onClick={() => setShowRevenueMultipleTooltip((v) => !v)}
+                        >
+                          <Info className="h-4 w-4 text-purple-400" />
+                          {showRevenueMultipleTooltip && (
+                            <div className="absolute left-1/2 top-[120%] z-10 max-w-xs p-4 bg-gray-900 border border-purple-400 rounded-lg shadow-xl text-xs text-gray-200" style={{ transform: 'translateX(-50%)' }}>
+                              <div className="font-bold mb-1">Revenue Multiple Formula</div>
+                              <div className="mb-1">Revenue Multiple = Company Value / Annual Revenue</div>
+                              <div className="mb-1">= ${currentValuation.toLocaleString()} / ${revenueMetrics.annual.toLocaleString()}</div>
+                              <div className="mt-2">Current Multiple: <span className="font-bold text-purple-400">{revenueMultiple.toFixed(1)}x</span></div>
+                            </div>
+                          )}
+                        </span>
+                      </div>
                       <div className="text-lg font-bold text-purple-400">
                         {revenueMultiple.toFixed(1)}x
                       </div>
                     </div>
                     <div className="p-3 bg-gray-800 rounded-lg">
-                      <div className="text-sm text-gray-400">Per Customer Value</div>
+                      <div className="text-sm text-gray-400 flex items-center">
+                        Per Customer Value
+                        <span
+                          className="ml-1 relative cursor-pointer"
+                          onMouseEnter={() => setShowPerCustomerTooltip(true)}
+                          onMouseLeave={() => setShowPerCustomerTooltip(false)}
+                          onClick={() => setShowPerCustomerTooltip((v) => !v)}
+                        >
+                          <Info className="h-4 w-4 text-orange-400" />
+                          {showPerCustomerTooltip && (
+                            <div className="absolute left-1/2 top-[120%] z-10 max-w-xs p-4 bg-gray-900 border border-orange-400 rounded-lg shadow-xl text-xs text-gray-200" style={{ transform: 'translateX(-50%)' }}>
+                              <div className="font-bold mb-1">Per Customer Value Formula</div>
+                              <div className="mb-1">Per Customer Value = Company Value / Customer Count</div>
+                              <div className="mb-1">= ${currentValuation.toLocaleString()} / {currentCustomers.toLocaleString()}</div>
+                              <div className="mt-2">Current Value: <span className="font-bold text-orange-400">{currentCustomers > 0 ? `$${Number((currentValuation / currentCustomers).toFixed(0)).toLocaleString()}` : '0'}</span></div>
+                            </div>
+                          )}
+                        </span>
+                      </div>
                       <div className="text-lg font-bold text-orange-400">
-                        ${customerCount > 0 ? (currentValuation / customerCount).toFixed(0) : '0'}
+                        {currentCustomers > 0 ? `$${Number((currentValuation / currentCustomers).toFixed(0)).toLocaleString()}` : '0'}
                       </div>
                     </div>
                   </div>
@@ -1230,25 +1401,25 @@ const App = () => {
                     <div className="p-4 bg-gray-800 rounded-lg">
                       <div className="text-sm text-gray-400">Total Agents</div>
                       <div className="text-xl font-bold text-purple-400">
-                        {(customerCount * agentsPerCustomer).toFixed(0)}
+                        {(currentCustomers * agentsPerCustomer).toFixed(0)}
                       </div>
                     </div>
                     <div className="p-4 bg-gray-800 rounded-lg">
                       <div className="text-sm text-gray-400">Revenue per Agent</div>
                       <div className="text-xl font-bold text-green-400">
-                        ${customerCount > 0 ? revenueMetrics.perAgent.toFixed(0) : '0'}/month
+                        ${currentCustomers > 0 ? revenueMetrics.perAgent.toFixed(0) : '0'}/month
                       </div>
                     </div>
                     <div className="p-4 bg-gray-800 rounded-lg">
                       <div className="text-sm text-gray-400">Revenue per Customer</div>
                       <div className="text-xl font-bold text-yellow-400">
-                        ${customerCount > 0 ? revenueMetrics.perCustomer.toFixed(0) : '0'}/month
+                        ${currentCustomers > 0 ? revenueMetrics.perCustomer.toFixed(0) : '0'}/month
                       </div>
                     </div>
                     <div className="p-4 bg-gray-800 rounded-lg">
-                      <div className="text-sm text-gray-400">Plan: {pricingPlans[selectedPlan as keyof typeof pricingPlans].name}</div>
+                      <div className="text-sm text-gray-400">Selected Plan</div>
                       <div className="text-lg font-bold text-blue-400">
-                        {pricingPlans[selectedPlan as keyof typeof pricingPlans].includedMinutes} min included
+                        {pricingPlans[selectedPlan as keyof typeof pricingPlans].name}
                       </div>
                     </div>
                   </div>
@@ -1296,15 +1467,15 @@ const App = () => {
                   <label className="text-sm text-gray-400 mb-2 block">Monthly Operating Costs (excluding salaries)</label>
                   <input
                     type="range"
-                    min="1000"
-                    max="20000"
-                    step="500"
-                    value={monthlyOperatingCosts}
-                    onChange={(e) => setMonthlyOperatingCosts(Number(e.target.value))}
+                    min="0"
+                    max="50"
+                    step="1"
+                    value={operatingCostPct}
+                    onChange={(e) => setOperatingCostPct(Number(e.target.value))}
                     className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-500"
                   />
                   <div className="mt-2 text-lg font-bold text-red-400">
-                    ${monthlyOperatingCosts.toLocaleString()}/month
+                    {operatingCostPct}% of revenue = ${monthlyOperatingCosts.toLocaleString()}/month
                   </div>
                 </div>
 
@@ -1342,37 +1513,33 @@ const App = () => {
                     <h5 className="text-md font-medium text-blue-300 mb-3">Customer Acquisition Timeline</h5>
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart
-                        data={cashflowTimeline.map(month => ({
-                          week: month.month * 4, // Convert months to weeks
-                          customers: month.customers,
-                          month: month.month
-                        }))}
-                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                        data={cumulativeCustomersData}
+                        margin={{ top: 20, right: 30, left: 30, bottom: 40 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis 
-                          dataKey="customers" 
+                        <XAxis
+                          dataKey="month"
                           stroke="#9CA3AF"
-                          label={{ value: 'Number of Customers', position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: '#9CA3AF' } }}
+                          label={{ value: 'Month', position: 'insideBottom', offset: -10, style: { textAnchor: 'middle', fill: '#9CA3AF' } }}
+                          tick={{ fontSize: 12 }}
+                          interval={0}
+                          allowDataOverflow={false}
+                          domain={[1, 12]}
+                          type="number"
                         />
-                        <YAxis 
-                          dataKey="week"
+                        <YAxis
+                          dataKey="customers"
                           stroke="#9CA3AF"
-                          label={{ value: 'Weeks', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: '#9CA3AF' } }}
+                          label={{ value: 'Cumulative Customers', angle: -90, position: 'insideLeft', offset: 10, style: { textAnchor: 'middle', fill: '#9CA3AF' } }}
+                          tick={{ fontSize: 12 }}
+                          allowDataOverflow={false}
                         />
-                        <Tooltip
-                          contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: 'white' }}
-                          formatter={(value: number, name: string) => [
-                            name === 'customers' ? `${value} customers` : `Week ${value}`,
-                            name === 'customers' ? 'Customers' : 'Timeline'
-                          ]}
-                          labelFormatter={(label) => `Month ${Math.ceil(label / 4)}`}
-                        />
+                        <Tooltip contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: 'white' }} />
                         <Area
                           type="monotone"
                           dataKey="customers"
-                          stroke="#8B5CF6"
-                          fill="#8B5CF6"
+                          stroke="#a78bfa"
+                          fill="#a78bfa"
                           fillOpacity={0.3}
                         />
                       </AreaChart>
@@ -1471,128 +1638,141 @@ const App = () => {
                 </div>
               </div>
 
-              {/* Investment Parameters */}
-              <div className="bg-gray-900 p-6 rounded-lg border border-gray-700 mt-6">
-                <h4 className="text-lg font-medium text-blue-300 mb-4">Investment Parameters</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="text-sm text-gray-400 mb-2 block">Equity Offered (%)</label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="30"
-                      step="0.5"
-                      value={equityPercentage}
-                      onChange={(e) => setEquityPercentage(Number(e.target.value))}
-                      className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                    />
-                    <div className="mt-2 text-xl font-bold text-blue-400">
-                      {equityPercentage}%
-                    </div>
-                  </div>
-                  <div className="bg-gray-800 p-4 rounded-lg">
-                    <div className="text-sm text-gray-400">Implied Valuation</div>
-                    <div className="text-xl font-bold text-purple-400">
-                      ${investmentAmount > 0 && equityPercentage > 0 ? ((investmentAmount / (equityPercentage / 100))).toLocaleString() : '0'}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      Based on investment terms only
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {activeTab === 'protection' && (
-            <div className="space-y-6">
-              <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
-                <div className="flex items-center mb-4">
-                  <Shield className="h-6 w-6 mr-2 text-blue-400" />
-                  <h3 className="text-xl font-semibold text-blue-300">Protection Balance Analysis</h3>
-                </div>
-                <p className="text-gray-400 mb-6">
-                  Visualization of protection measures balancing company and founder interests across key dimensions.
-                </p>
-                <div className="h-96">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart outerRadius={150} data={protectionData}>
-                      <PolarGrid stroke="#374151" />
-                      <PolarAngleAxis dataKey="subject" tick={{ fill: '#9CA3AF' }} />
-                      <PolarRadiusAxis angle={30} domain={[0, 10]} tick={{ fill: '#9CA3AF' }} />
-                      <Radar
-                        name="Company"
-                        dataKey="companyScore"
-                        stroke="#3B82F6"
-                        fill="#3B82F6"
-                        fillOpacity={0.3}
-                      />
-                      <Radar
-                        name="Founders"
-                        dataKey="founderScore"
-                        stroke="#10B981"
-                        fill="#10B981"
-                        fillOpacity={0.3}
-                      />
-                      <Legend />
-                    </RadarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+
             </div>
           )}
           
           {activeTab === 'investor' && (
-            <div className="space-y-6">
+            <div className="p-6 space-y-6">
+              <div className="bg-gray-900 p-8 rounded-3xl border-2 border-blue-800 shadow-2xl mb-6">
+                <h3 className="text-2xl font-bold text-blue-300 mb-4">
+                  Series A Exit Scenario <span className="text-white">({currentCustomers.toLocaleString()} Customers)</span>
+                </h3>
+                <div className="text-lg text-white mb-4">
+                  If the company is valued at <span className="text-4xl font-extrabold text-emerald-400">${currentValuation.toLocaleString()}</span> at <span className="text-blue-200 font-bold">{currentCustomers.toLocaleString()}</span> customers:
+                </div>
+                <div className="text-xl text-amber-400 font-bold mb-2">
+                  Series A 10% stake: <span className="text-3xl">${(currentValuation * 0.10).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="text-lg text-blue-400 font-bold mb-2">
+                  Entry price per share: <span className="text-2xl">${(1000000 / 1190476).toFixed(2)}</span>
+                </div>
+                <div className="text-lg text-amber-400 font-bold mb-2">
+                  Exit price per share: <span className="text-2xl">${valuePerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                {/* Percentage increase in share value */}
+                <div className="text-lg text-green-400 font-bold mb-2">
+                  Share value increase: <span className="text-2xl">{`${(((valuePerShare - (1000000 / 1190476)) / (1000000 / 1190476)) * 100).toFixed(2)}%`}</span>
+                </div>
+                <div className="text-base text-gray-400 mt-6">
+                  <span className="italic">Note:</span> Actual exit value may be higher or lower depending on the average number of agents per customer and minutes sold per agent.
+                </div>
+              </div>
               <div className="bg-gray-900 rounded-lg p-6 border border-gray-700">
                 <div className="flex items-center mb-4">
                   <PieChartIcon className="h-6 w-6 mr-2 text-yellow-400" />
                   <h3 className="text-xl font-semibold text-blue-300">Investor Pool Analysis</h3>
                 </div>
                 <p className="text-gray-400 mb-6">
-                  Overview of the 1,000,000 shares (10%) reserved from Domenico's holding for future investors.
+                  Overview of the 1,190,476 shares (10% of authorized capital) reserved by the company for future external investors. These shares are issued as new shares, diluting all existing shareholders proportionally.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                  {investorPoolData.map((stage) => (
-                    <div key={stage.stage} className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-                      <h4 className="text-lg font-semibold text-white mb-2">{stage.stage}</h4>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Shares</span>
-                          <span className="text-yellow-400">{stage.shares.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Status</span>
-                          <span className="text-blue-400">{stage.allocation}</span>
-                        </div>
+                  {/* Investor Pool Card */}
+                  <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                    <h4 className="text-lg font-semibold text-white mb-2">Investor Pool</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Shares</span>
+                        <span className="text-yellow-400">1,190,476</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Status</span>
+                        <span className="text-blue-400">Authorized for future external investors</span>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                  {/* Series A Card */}
+                  <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                    <h4 className="text-lg font-semibold text-white mb-2">Series A</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Shares Issued</span>
+                        <span className="text-yellow-400">1,190,476</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Status</span>
+                        <span className="text-blue-400">Issued at Series A (diluting all existing shareholders)</span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Series B Card */}
+                  <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                    <h4 className="text-lg font-semibold text-white mb-2">Series B</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Shares Issued</span>
+                        <span className="text-yellow-400">1,323,809</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Status</span>
+                        <span className="text-blue-400">Issued at Series B (further dilution)</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
+                {/* Scenario Toggle */}
+                <div className="flex justify-center mb-4">
+                  <button
+                    className={`px-4 py-2 rounded-l-lg font-semibold border border-blue-500 focus:outline-none transition-colors duration-200 ${investorScenario === 'seriesA' ? 'bg-blue-500 text-white' : 'bg-gray-800 text-blue-300'}`}
+                    onClick={() => setInvestorScenario('seriesA')}
+                  >
+                    Series A
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded-r-lg font-semibold border border-blue-500 border-l-0 focus:outline-none transition-colors duration-200 ${investorScenario === 'seriesB' ? 'bg-blue-500 text-white' : 'bg-gray-800 text-blue-300'}`}
+                    onClick={() => setInvestorScenario('seriesB')}
+                  >
+                    Series B
+                  </button>
+                </div>
+
+                {/* Dynamic Pie Chart */}
+                <div className="h-64 flex flex-col items-center justify-center">
+                  <ResponsiveContainer width="60%" height="100%">
                     <PieChart>
                       <Pie
-                        data={investorPoolData}
+                        data={investorPieData}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        outerRadius={80}
+                        outerRadius={90}
                         fill="#8884d8"
-                        dataKey="shares"
+                        dataKey="value"
+                        isAnimationActive={true}
+                        animationDuration={800}
+                        animationEasing="ease-in-out"
                       >
-                        {investorPoolData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={['#EAB308', '#3B82F6', '#10B981'][index % 3]} />
+                        {investorPieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
                       <Tooltip
+                        formatter={(value, name, props) => [`${value}%`, props.payload.name]}
                         contentStyle={{ backgroundColor: '#1F2937', borderColor: '#374151', color: 'white' }}
                       />
-                      <Legend />
                     </PieChart>
                   </ResponsiveContainer>
+                  {/* Custom Legend */}
+                  <div className="flex justify-center mt-4 space-x-6">
+                    {investorPieData.map((entry, idx) => (
+                      <div key={entry.name} className="flex items-center space-x-2">
+                        <span className="inline-block w-4 h-4 rounded" style={{ backgroundColor: entry.color }}></span>
+                        <span className="text-sm text-gray-200">{entry.name} ({entry.value}%)</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
